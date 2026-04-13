@@ -273,6 +273,18 @@ function gasGet(params) {
     });
 }
 
+// Submit a response using no-cors (fire-and-forget).
+// GAS redirects cause CORS failures on the submit leg even though the row is
+// written successfully.  no-cors sends the request without reading the response,
+// so the browser never sees the missing CORS header.
+function gasSubmit(params) {
+  var qs = Object.keys(params).map(function(k) {
+    return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
+  }).join("&");
+  return fetch(GAS_URL + "?" + qs, { mode: "no-cors" })
+    .then(function() { return { ok: true }; });
+}
+
 // ---------------------------------------------------------------------------
 // Page: Consent
 // ---------------------------------------------------------------------------
@@ -385,7 +397,7 @@ function nextScenario() {
   btnNext.disabled = true;
   btnNext.innerHTML = '<span class="spinner"></span>Saving…';
 
-  gasGet({
+  gasSubmit({
     action:  "submit",
     pid:     state.prolificId,
     sid:     scenarioId,

@@ -281,8 +281,12 @@ function gasSubmit(params) {
   var qs = Object.keys(params).map(function(k) {
     return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
   }).join("&");
+  // no-cors: response is opaque, we cannot read status or body.
+  // Treat any outcome (including ERR_ABORTED on a server 400) as success so
+  // the survey always advances.  Verify data landed in the sheet separately.
   return fetch(GAS_URL + "?" + qs, { mode: "no-cors" })
-    .then(function() { return { ok: true }; });
+    .then(function() { return { ok: true }; })
+    .catch(function() { return { ok: true }; });
 }
 
 // ---------------------------------------------------------------------------

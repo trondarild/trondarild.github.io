@@ -1,14 +1,16 @@
 <!DOCTYPE html>
 <!--
   appropriateness_survey_ghpages.html
-  Static survey for GitHub Pages.  Scenarios and responses are loaded from
-  and saved to a Google Apps Script Web App (appropriateness_survey_ghpages.gs).
+  Static survey for GitHub Pages.  Responses are saved to Supabase.
+  Scenarios and labels are embedded directly — no backend needed for loading.
 
   Setup:
-    1. Deploy appropriateness_survey_ghpages.gs as a GAS Web App
-       (Execute as: Me  |  Who has access: Anyone).
-    2. Replace GAS_URL below with the /exec URL from that deployment.
-    3. Commit this file to the gh-pages branch (or docs/ folder) of your repo.
+    1. Create a free Supabase project at https://supabase.com
+    2. Run the SQL in appropriateness_survey_supabase_setup.sql to create the
+       responses table and RLS policy.
+    3. Copy your Project URL and anon/public key from
+       Project Settings → API and paste them as SUPABASE_URL / SUPABASE_ANON_KEY.
+    4. Commit this file to the gh-pages branch (or docs/ folder) of your repo.
 -->
 <html lang="en">
 <head>
@@ -218,11 +220,73 @@
 
 <script>
 // ---------------------------------------------------------------------------
-// CONFIG — replace with your GAS /exec URL after deploying the backend
+// CONFIG — paste your Supabase project URL and anon key here
 // ---------------------------------------------------------------------------
-// https://script.google.com/macros/s/AKfycbx7enpGLP34rYk7RwhGuiZhS6PxNnvAX5sS01WcSsKCJ0bSTTnzm7rpT9yTLUo2KmiJYw/exec
-var GAS_URL         = "https://script.google.com/macros/s/AKfycbx7enpGLP34rYk7RwhGuiZhS6PxNnvAX5sS01WcSsKCJ0bSTTnzm7rpT9yTLUo2KmiJYw/exec";
-var COMPLETION_CODE = "COGEMI2025"; // replace with your Prolific completion code
+var SUPABASE_URL      = "https://bcrssdaahemdueuqnnbt.supabase.co";
+var SUPABASE_ANON_KEY = "sb_publishable_Rm0HnRFPxHraszzsp9bjkA_g2JMCkd-";
+var COMPLETION_CODE   = "COGEMI2025"; // replace with your Prolific completion code
+
+// ---------------------------------------------------------------------------
+// Scenario pool and response labels (embedded — no network call needed)
+// ---------------------------------------------------------------------------
+var SCENARIO_POOL = [
+  { id: "sa_cutinline_supermarket",     en: "Someone walks past a queue of people and goes straight to the front at the supermarket checkout.", fr: "Quelqu'un dépasse la file et passe directement à la caisse du supermarché." },
+  { id: "sa_cutinline_cinema",          en: "Someone pushes in front of others waiting to buy tickets at the cinema.", fr: "Quelqu'un s'insère devant les autres dans la file d'attente au cinéma." },
+  { id: "sa_cutinline_busstop",         en: "Someone jumps the queue at a busy bus stop, boarding before people who have waited longer.", fr: "Quelqu'un grille la priorité à un arrêt de bus bondé." },
+  { id: "sa_cutinline_emergency",       en: "Someone who is visibly unwell asks to move to the front of the queue at a pharmacy.", fr: "Une personne visiblement malade demande à passer devant dans la file d'attente à la pharmacie." },
+  { id: "sa_cutinline_border",          en: "A traveller with a connecting flight in 20 minutes asks to move ahead in the passport control queue.", fr: "Un voyageur avec une correspondance dans 20 minutes demande à passer devant au contrôle des passeports." },
+  { id: "sa_holdoor_office",            en: "Someone holds the door open for a colleague directly behind them at the office entrance.", fr: "Quelqu'un tient la porte à un collègue juste derrière lui à l'entrée du bureau." },
+  { id: "sa_holdoor_elevator",          en: "Someone holds the elevator for a person running toward it from across the lobby.", fr: "Quelqu'un retient l'ascenseur pour quelqu'un qui court depuis l'autre bout du hall." },
+  { id: "sa_holdoor_shop",              en: "Someone holds the door open for a stranger carrying heavy shopping bags.", fr: "Quelqu'un tient la porte à un inconnu chargé de sacs de courses." },
+  { id: "sa_holdoor_street",            en: "Someone holds a heavy gate open for a cyclist they don't know on the street.", fr: "Quelqu'un maintient un portail pour un cycliste inconnu dans la rue." },
+  { id: "sa_holdoor_rain",              en: "Someone stands in the rain for a full minute holding a door because a person is still far away.", fr: "Quelqu'un reste sous la pluie pendant une minute entière à tenir la porte alors que la personne est encore loin." },
+  { id: "sa_speakloud_library",         en: "Someone takes a phone call and speaks at normal conversational volume in a quiet library.", fr: "Quelqu'un répond à un appel et parle normalement dans une bibliothèque silencieuse." },
+  { id: "sa_speakloud_cafe",            en: "Someone has a loud, laughing conversation on their phone in a busy café.", fr: "Quelqu'un rit et parle fort au téléphone dans un café animé." },
+  { id: "sa_speakloud_restaurant",      en: "Someone speaks so loudly on a call that nearby diners at a restaurant can hear every word.", fr: "Quelqu'un parle si fort au téléphone dans un restaurant que les clients voisins entendent tout." },
+  { id: "sa_speakloud_cinema",          en: "Someone narrates the film to their companion in a normal speaking voice during a screening.", fr: "Quelqu'un commente le film à voix normale pendant une projection." },
+  { id: "sa_speakloud_publictransport", en: "Someone listens to music without headphones on a busy commuter train.", fr: "Quelqu'un écoute de la musique sans écouteurs dans un train bondé." },
+  { id: "sa_phonetable_family_dinner",  en: "Someone scrolls through their phone throughout a family dinner without joining the conversation.", fr: "Quelqu'un fait défiler son téléphone tout au long d'un dîner de famille sans participer à la conversation." },
+  { id: "sa_phonetable_date",           en: "Someone checks their phone several times while on a first date at a restaurant.", fr: "Quelqu'un vérifie son téléphone plusieurs fois lors d'un premier rendez-vous au restaurant." },
+  { id: "sa_phonetable_meeting",        en: "Someone replies to messages on their phone during a work meeting.", fr: "Quelqu'un répond à des messages sur son téléphone pendant une réunion de travail." },
+  { id: "sa_phonetable_funeral",        en: "Someone silently reads messages on their phone during a funeral reception.", fr: "Quelqu'un lit silencieusement des messages sur son téléphone lors d'une réception funèbre." },
+  { id: "sa_phonetable_cafe",           en: "Someone places their phone face-up on the café table but does not look at it during a conversation.", fr: "Quelqu'un pose son téléphone face visible sur la table au café mais ne le regarde pas pendant la conversation." },
+  { id: "sa_littering_park",            en: "Someone drops an empty crisp packet on the ground in a public park.", fr: "Quelqu'un jette un paquet de chips vide par terre dans un parc public." },
+  { id: "sa_littering_beach",           en: "Someone leaves their picnic rubbish on the beach when they leave.", fr: "Quelqu'un laisse ses déchets de pique-nique sur la plage en partant." },
+  { id: "sa_littering_street",          en: "Someone drops a cigarette butt on the pavement rather than using a bin.", fr: "Quelqu'un jette un mégot sur le trottoir plutôt que de le mettre à la poubelle." },
+  { id: "sa_littering_publictransport", en: "Someone leaves a newspaper on their seat when getting off the bus.", fr: "Quelqu'un laisse un journal sur son siège en descendant du bus." },
+  { id: "sa_littering_forest",          en: "Someone buries their food waste in the forest while hiking and leaves no trace on the surface.", fr: "Quelqu'un enfouit ses déchets alimentaires dans la forêt pendant une randonnée sans laisser de trace en surface." },
+  { id: "sa_ignoregreet_office",        en: "A colleague says good morning and the person walks past without responding.", fr: "Un collègue dit bonjour et la personne passe sans répondre." },
+  { id: "sa_ignoregreet_neighborhood",  en: "A neighbour waves hello and the person pretends not to see them.", fr: "Un voisin fait un signe de la main et la personne fait semblant de ne pas le voir." },
+  { id: "sa_ignoregreet_gym",           en: "A regular gym acquaintance greets someone and they put their headphones on without acknowledging them.", fr: "Une connaissance habituelle de la salle de sport salue quelqu'un qui met ses écouteurs sans lui répondre." },
+  { id: "sa_ignoregreet_elevator",      en: "Someone steps into an elevator, makes eye contact with another person already inside, and says nothing.", fr: "Quelqu'un entre dans un ascenseur, croise le regard de l'autre personne et ne dit rien." },
+  { id: "sa_ignoregreet_party",         en: "A person at a party ignores someone who introduces themselves and turns away to talk to someone else.", fr: "Une personne à une fête ignore quelqu'un qui se présente et se retourne pour parler à quelqu'un d'autre." },
+  { id: "sa_offerhelp_directions",      en: "Someone overhears a tourist looking confused and offers directions unprompted.", fr: "Quelqu'un entend un touriste perdu et lui propose spontanément de l'aider." },
+  { id: "sa_offerhelp_grocerybags",     en: "Someone offers to carry an elderly person's heavy grocery bags to their car.", fr: "Quelqu'un propose de porter les lourds sacs de course d'une personne âgée jusqu'à sa voiture." },
+  { id: "sa_offerhelp_door",            en: "Someone rushes ahead to open a door for a person in a wheelchair.", fr: "Quelqu'un se dépêche d'ouvrir une porte à une personne en fauteuil roulant." },
+  { id: "sa_offerhelp_crying",          en: "A stranger sitting nearby is crying quietly; someone touches their arm and asks if they are okay.", fr: "Un inconnu assis à côté pleure silencieusement ; quelqu'un lui touche le bras et lui demande si ça va." },
+  { id: "sa_offerhelp_fallen",          en: "Someone falls on the street and a passer-by immediately stops to help them up.", fr: "Quelqu'un tombe dans la rue et un passant s'arrête immédiatement pour l'aider à se relever." },
+  { id: "sa_personalspace_queue",       en: "Someone stands very close behind the person in front of them in a queue, almost touching.", fr: "Quelqu'un se tient très près derrière la personne devant lui dans une file, presque en contact." },
+  { id: "sa_personalspace_elevator",    en: "Someone stands in the centre of an empty elevator, leaving only a small space for another person who enters.", fr: "Quelqu'un se place au centre d'un ascenseur vide, laissant peu de place à la personne qui entre." },
+  { id: "sa_personalspace_emptybus",    en: "Someone chooses to sit directly next to a stranger on an otherwise empty bus.", fr: "Quelqu'un choisit de s'asseoir juste à côté d'un inconnu dans un bus autrement vide." },
+  { id: "sa_personalspace_bench",       en: "Someone sits at the far end of a park bench to maintain distance from the only other person there.", fr: "Quelqu'un s'assoit à l'autre bout d'un banc de parc pour maintenir une distance avec l'autre personne." },
+  { id: "sa_personalspace_waiting_room",en: "Someone sits directly next to a person in a waiting room when many other seats are available.", fr: "Quelqu'un s'assoit juste à côté d'une personne dans une salle d'attente alors que beaucoup d'autres sièges sont libres." }
+];
+
+var ATTENTION_CHECKS = [
+  { id: "sa_check_appropriate",   en: "Someone holds the door open for the person directly behind them.", fr: "Quelqu'un tient la porte à la personne juste derrière lui." },
+  { id: "sa_check_inappropriate", en: "Someone pushes past everyone waiting and barges to the front of the queue at a hospital reception.", fr: "Quelqu'un bouscule tout le monde et se place en tête de file à l'accueil d'un hôpital." }
+];
+
+var RESPONSE_LABELS = {
+  en: ["Inappropriate", "Neutral", "Appropriate"],
+  fr: ["Inapproprié",   "Neutre",  "Approprié"]
+};
+var RESPONSE_VALUES = ["Inappropriate", "Neutral", "Appropriate"];
+
+var QUESTIONS = {
+  en: "How socially appropriate is the action described?",
+  fr: "Dans quelle mesure l'action décrite est-elle socialement appropriée ?"
+};
 
 // ---------------------------------------------------------------------------
 // State
@@ -240,11 +304,6 @@ var state = {
   labels:     []
 };
 
-var QUESTIONS = {
-  en: "How socially appropriate is the action described?",
-  fr: "Dans quelle mesure l'action décrite est-elle socialement appropriée ?"
-};
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -260,33 +319,47 @@ function setStatus(elId, msg) {
   document.getElementById(elId).textContent = msg;
 }
 
-// GAS GET request — returns a Promise resolving to parsed JSON.
-// Passes params as query string; all GAS operations use doGet(e).
-function gasGet(params) {
-  var qs = Object.keys(params).map(function(k) {
-    return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
-  }).join("&");
-  return fetch(GAS_URL + "?" + qs)
-    .then(function(r) {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    });
+function shuffle(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+  }
+  return a;
 }
 
-// Submit a response using no-cors (fire-and-forget).
-// GAS redirects cause CORS failures on the submit leg even though the row is
-// written successfully.  no-cors sends the request without reading the response,
-// so the browser never sees the missing CORS header.
-function gasSubmit(params) {
-  var qs = Object.keys(params).map(function(k) {
-    return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
-  }).join("&");
-  // no-cors: response is opaque, we cannot read status or body.
-  // Treat any outcome (including ERR_ABORTED on a server 400) as success so
-  // the survey always advances.  Verify data landed in the sheet separately.
-  return fetch(GAS_URL + "?" + qs, { mode: "no-cors" })
-    .then(function() { return { ok: true }; })
-    .catch(function() { return { ok: true }; });
+function buildSession(lang) {
+  var pool = shuffle(SCENARIO_POOL);
+  pool.splice(7,  0, ATTENTION_CHECKS[0]);
+  pool.splice(17, 0, ATTENTION_CHECKS[1]);
+  return pool.map(function(s) {
+    return { id: s.id, text: lang === "fr" ? s.fr : s.en };
+  });
+}
+
+function buildLabels(lang) {
+  var display = RESPONSE_LABELS[lang] || RESPONSE_LABELS.en;
+  return RESPONSE_VALUES.map(function(v, i) {
+    return { value: v, label: display[i] };
+  });
+}
+
+// POST one row to Supabase REST API.
+function supabaseInsert(row) {
+  return fetch(SUPABASE_URL + "/rest/v1/responses", {
+    method:  "POST",
+    headers: {
+      "apikey":        SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+      "Content-Type":  "application/json",
+      "Prefer":        "return=minimal"
+    },
+    body: JSON.stringify(row)
+  })
+  .then(function(r) {
+    if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+    return { ok: true };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +377,7 @@ function startDemographics() {
 }
 
 // ---------------------------------------------------------------------------
-// Page: Demographics → load scenarios + labels, then show survey
+// Page: Demographics → build session locally, show survey immediately
 // ---------------------------------------------------------------------------
 
 function startSurvey() {
@@ -324,28 +397,12 @@ function startSurvey() {
   state.gender     = gen;
   state.country    = cty;
   state.firstLang  = fl;
+  state.scenarios  = buildSession(state.lang);
+  state.labels     = buildLabels(state.lang);
+  state.current    = 0;
 
-  var btn = document.getElementById("btn-start");
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Loading…';
-  setStatus("status-demo", "");
-
-  Promise.all([
-    gasGet({ action: "scenarios", lang: state.lang }),
-    gasGet({ action: "labels",    lang: state.lang })
-  ])
-  .then(function(results) {
-    state.scenarios = results[0];
-    state.labels    = results[1];
-    state.current   = 0;
-    show("page-survey");
-    renderScenario();
-  })
-  .catch(function(err) {
-    btn.disabled = false;
-    btn.textContent = "Start survey";
-    setStatus("status-demo", "Could not load survey data — please check your connection and try again. (" + err.message + ")");
-  });
+  show("page-survey");
+  renderScenario();
 }
 
 // ---------------------------------------------------------------------------
@@ -390,7 +447,7 @@ function selectResponse(value, btn) {
 }
 
 // ---------------------------------------------------------------------------
-// Submit response, advance to next scenario
+// Submit response to Supabase, advance to next scenario
 // ---------------------------------------------------------------------------
 
 function nextScenario() {
@@ -401,23 +458,17 @@ function nextScenario() {
   btnNext.disabled = true;
   btnNext.innerHTML = '<span class="spinner"></span>Saving…';
 
-  gasSubmit({
-    action:  "submit",
-    pid:     state.prolificId,
-    sid:     scenarioId,
-    resp:    state.selected,
-    age:     state.age,
-    gender:  state.gender,
-    country: state.country,
-    lang:    state.lang
+  supabaseInsert({
+    prolific_id: state.prolificId,
+    scenario_id: scenarioId,
+    response:    state.selected,
+    age:         state.age,
+    gender:      state.gender,
+    country:     state.country,
+    language:    state.lang
   })
-  .then(function(result) {
+  .then(function() {
     btnNext.textContent = "Next";
-    if (!result.ok) {
-      setStatus("status-survey", "Save error: " + result.error + " — please try again.");
-      btnNext.disabled = false;
-      return;
-    }
     state.current++;
     if (state.current >= state.scenarios.length) {
       document.getElementById("completion-code").textContent = COMPLETION_CODE;
@@ -428,7 +479,7 @@ function nextScenario() {
   })
   .catch(function(err) {
     btnNext.textContent = "Next";
-    setStatus("status-survey", "Network error — please check your connection and try again.");
+    setStatus("status-survey", "Save error — please try again. (" + err.message + ")");
     btnNext.disabled = false;
   });
 }

@@ -10,18 +10,15 @@
   - PROLIFIC_PID, STUDY_ID, SESSION_ID are read silently from URL query params on load.
   - If PROLIFIC_PID is absent the participant sees a dead-end page and cannot proceed.
   - No demographics page: age / gender / country / language are available via Prolific export.
-  - On completion the participant pastes their Prolific completion code into a text field;
-    clicking "Complete" stores it in Supabase and redirects to Prolific via PROLIFIC_RETURN_URL.
+  - On completion a "__completion__" row is stored in Supabase and the participant
+    is redirected automatically to PROLIFIC_RETURN_URL (no code-paste step needed —
+    Prolific's study-level completion code is embedded in the return URL).
 
   Supabase table: responses
   Required columns (run migration if not yet present):
     ALTER TABLE responses ADD COLUMN IF NOT EXISTS study_id        text;
     ALTER TABLE responses ADD COLUMN IF NOT EXISTS session_id      text;
     ALTER TABLE responses ADD COLUMN IF NOT EXISTS completion_code text;
-
-  Before going live:
-  1. Replace PROLIFIC_RETURN_URL with the actual URL from your Prolific study dashboard.
-  2. Replace COMPLETION_CODE with the code Prolific assigns to your study.
 -->
 <html lang="en">
 <head>
@@ -171,11 +168,8 @@
   <div id="page-done" class="hidden">
     <h1>Thank you!</h1>
     <p>You have completed the study. Your responses have been recorded.</p>
-    <p>Please enter the completion code you received from Prolific and click <strong>Complete</strong> to return.</p>
-    <label for="completion-code-input">Prolific completion code</label>
-    <input type="text" id="completion-code-input" placeholder="e.g. CXYZ1234"
-           oninput="document.getElementById('btn-complete').disabled = !this.value.trim();">
-    <button class="btn-primary" id="btn-complete" disabled onclick="completeStudy()">Complete</button>
+    <p>You will be redirected to Prolific automatically. If nothing happens within a few seconds, click the button below.</p>
+    <button class="btn-primary" id="btn-complete" onclick="completeStudy()">Return to Prolific</button>
     <div class="status-msg" id="status-done"></div>
   </div>
 
@@ -186,7 +180,7 @@
 // ---------------------------------------------------------------------------
 var SUPABASE_URL        = "https://bcrssdaahemdueuqnnbt.supabase.co";
 var SUPABASE_ANON_KEY   = "sb_publishable_Rm0HnRFPxHraszzsp9bjkA_g2JMCkd-";
-var PROLIFIC_RETURN_URL = "https://app.prolific.com/submissions/complete"; // replace with actual URL from Prolific
+var PROLIFIC_RETURN_URL = "https://app.prolific.com/submissions/complete?cc=CMZU9JD5";
 
 // ---------------------------------------------------------------------------
 // Prolific URL params (read silently — never shown to participant)
@@ -508,6 +502,7 @@ function nextScenario() {
     state.current++;
     if (state.current >= state.scenarios.length) {
       show("page-done");
+      autoRedirect();
     } else {
       renderScenario();
     }
@@ -581,30 +576,31 @@ function renumberAspects() {
 }
 
 // ---------------------------------------------------------------------------
-// Completion — participant pastes Prolific code, we store + redirect
+// Completion — store a completion row in Supabase then redirect to Prolific
 // ---------------------------------------------------------------------------
 function completeStudy() {
-  var code    = document.getElementById("completion-code-input").value.trim();
   var btnDone = document.getElementById("btn-complete");
-  if (!code) return;
   btnDone.disabled  = true;
-  btnDone.innerHTML = '<span class="spinner"></span>Submitting\u2026';
+  btnDone.innerHTML = '<span class="spinner"></span>Redirecting\u2026';
 
   supabaseInsert({
     prolific_id:      PROLIFIC_PID,
     study_id:         STUDY_ID,
     session_id:       SESSION_ID,
     scenario_id:      "__completion__",
-    response:         code,
-    completion_code:  code
+    response:         "completed",
+    completion_code:  "CMZU9JD5"
   })
-  .then(function() {
-    window.location.href = PROLIFIC_RETURN_URL + "?cc=" + encodeURIComponent(code);
-  })
+  .then(function()  { window.location.href = PROLIFIC_RETURN_URL; })
   .catch(function() {
     // Redirect even if Supabase write fails — participant must not get stuck
-    window.location.href = PROLIFIC_RETURN_URL + "?cc=" + encodeURIComponent(code);
+    window.location.href = PROLIFIC_RETURN_URL;
   });
+}
+
+// Auto-redirect on completion page load
+function autoRedirect() {
+  setTimeout(completeStudy, 2500);
 }
 </script>
 </body>

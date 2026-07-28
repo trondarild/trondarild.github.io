@@ -16,11 +16,19 @@ Current study — one Prolific study, role drawn server-side at entry:
 
 [cavaa/appropriateness_survey_aspects_park_prolific_v2_roles.html](cavaa/appropriateness_survey_aspects_park_prolific_v2_roles.html)
 
-### Superseded
+### Retired
 
 The three per-arm files (`..._v2_agent`, `..._v2_target`, `..._v2_observer`)
-were replaced by the role router before their completion codes were set. They
-remain deployed but no Prolific study points at them.
+were replaced by the role router before their completion codes were set, so a
+participant who reached one and finished would have been sent to an invalid
+Prolific URL. They have been removed from this repo, along with
+`appropriateness_survey_local_test.html` and a stray CSV of test responses.
+The sources remain in `cogemi/survey/`, and `deploy_to_pages.sh` refuses to
+publish them.
+
+### Superseded
+
+Still served, unreferenced by any Prolific study:
 
 [cavaa/appropriateness_survey_aspects_park_prolific_v2.html](cavaa/appropriateness_survey_aspects_park_prolific_v2.html)
 

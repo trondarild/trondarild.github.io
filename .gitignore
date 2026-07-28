@@ -1,0 +1,5 @@
+# Local test scaffolding — see README. These exist to serve cavaa/ from a
+# local web server; publishing them would put a test landing page on the live
+# site.
+cavaa/index.html
+cavaa/webserver.sh
